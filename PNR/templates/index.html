@@ -1,0 +1,573 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PNR数据提取工具</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        primary: '#1a73e8',
+                        'primary-dark': '#1557b0',
+                        success: '#0f9d58',
+                        danger: '#ea4335',
+                        warning: '#f9ab00',
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        :root {
+            --bg: #f8fafc;
+            --card-bg: #ffffff;
+        }
+        * { box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans SC", sans-serif;
+            background: linear-gradient(135deg, #f0f4ff 0%, #e8f0fe 50%, #f8fafc 100%);
+            min-height: 100vh;
+        }
+        .card {
+            background: var(--card-bg);
+            border-radius: 16px;
+            box-shadow: 0 4px 24px rgba(0, 0, 0, 0.06), 0 1px 4px rgba(0, 0, 0, 0.04);
+            border: 1px solid rgba(0, 0, 0, 0.04);
+        }
+        .btn-primary {
+            background: linear-gradient(135deg, #1a73e8, #1557b0);
+            color: white;
+            border-radius: 10px;
+            font-weight: 600;
+            transition: all 0.2s;
+            cursor: pointer;
+            border: none;
+        }
+        .btn-primary:hover { transform: translateY(-1px); box-shadow: 0 4px 12px rgba(26, 115, 232, 0.35); }
+        .btn-primary:active { transform: translateY(0); }
+        .btn-primary:disabled { background: #93b8ed; cursor: not-allowed; transform: none; box-shadow: none; }
+        .btn-secondary {
+            background: white;
+            color: #1a73e8;
+            border: 2px solid #1a73e8;
+            border-radius: 10px;
+            font-weight: 600;
+            transition: all 0.2s;
+            cursor: pointer;
+        }
+        .btn-secondary:hover { background: #f0f6ff; }
+        .input-field {
+            border: 2px solid #e2e8f0;
+            border-radius: 10px;
+            padding: 12px 16px;
+            font-size: 16px;
+            transition: all 0.2s;
+            width: 100%;
+            outline: none;
+            background: #f8fafc;
+        }
+        .input-field:focus { border-color: #1a73e8; background: white; box-shadow: 0 0 0 3px rgba(26, 115, 232, 0.1); }
+        .tab-btn {
+            padding: 10px 24px;
+            border-radius: 8px 8px 0 0;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+            border: none;
+            font-size: 15px;
+        }
+        .tab-btn.active { background: white; color: #1a73e8; }
+        .tab-btn:not(.active) { background: transparent; color: #64748b; }
+        .tab-btn:not(.active):hover { color: #1a73e8; background: rgba(26, 115, 232, 0.05); }
+        .result-table { width: 100%; border-collapse: separate; border-spacing: 0; }
+        .result-table th {
+            background: #f1f5f9;
+            padding: 12px 16px;
+            text-align: left;
+            font-weight: 600;
+            font-size: 13px;
+            color: #475569;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        .result-table td { padding: 12px 16px; border-top: 1px solid #f1f5f9; font-size: 14px; }
+        .result-table tr:hover td { background: #f8fafc; }
+        .tag-success { background: #e6f4ea; color: #0f9d58; padding: 3px 10px; border-radius: 20px; font-size: 12px; font-weight: 600; }
+        .tag-fail { background: #fce8e6; color: #ea4335; padding: 3px 10px; border-radius: 20px; font-size: 12px; font-weight: 600; }
+        .tag-warning { background: #fef7e0; color: #e37400; padding: 3px 10px; border-radius: 20px; font-size: 12px; font-weight: 600; }
+        .file-upload-area {
+            border: 2px dashed #cbd5e1;
+            border-radius: 12px;
+            padding: 40px 20px;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.2s;
+            background: #f8fafc;
+        }
+        .file-upload-area:hover, .file-upload-area.dragover { border-color: #1a73e8; background: #f0f6ff; }
+        .upload-icon { font-size: 48px; color: #94a3b8; margin-bottom: 12px; }
+        .progress-bar-bg { background: #e2e8f0; border-radius: 8px; height: 8px; overflow: hidden; }
+        .progress-bar-fg { background: linear-gradient(90deg, #1a73e8, #4285f4); height: 100%; border-radius: 8px; transition: width 0.5s ease; }
+        .spinner { 
+            border: 3px solid #e2e8f0; border-top: 3px solid #1a73e8;
+            border-radius: 50%; width: 24px; height: 24px;
+            animation: spin 0.8s linear infinite; display: inline-block; vertical-align: middle; margin-right: 8px; 
+        }
+        @keyframes spin { to { transform: rotate(360deg); } }
+        .toast {
+            position: fixed; top: 20px; right: 20px;
+            padding: 14px 20px; border-radius: 10px; color: white; font-weight: 600;
+            z-index: 9999; opacity: 0; transform: translateX(100px);
+            transition: all 0.3s ease;
+            max-width: 400px;
+            box-shadow: 0 8px 24px rgba(0,0,0,0.15);
+        }
+        .toast.show { opacity: 1; transform: translateX(0); }
+        .toast.success { background: #0f9d58; }
+        .toast.error { background: #ea4335; }
+        .toast.info { background: #1a73e8; }
+        .stats-card {
+            background: white; border-radius: 12px; padding: 20px;
+            box-shadow: 0 2px 12px rgba(0,0,0,0.04);
+            border: 1px solid #f1f5f9;
+        }
+        .stats-value { font-size: 32px; font-weight: 700; }
+        .stats-label { font-size: 13px; color: #64748b; margin-top: 4px; }
+        .gradient-text {
+            background: linear-gradient(135deg, #1a73e8, #4285f4);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+    </style>
+</head>
+<body>
+    <!-- Toast 消息 -->
+    <div id="toast" class="toast"></div>
+
+    <!-- 顶部导航 -->
+    <header class="bg-white/80 backdrop-blur-md border-b border-gray-100 sticky top-0 z-50">
+        <div class="max-w-6xl mx-auto px-6 py-4 flex items-center justify-between">
+            <div class="flex items-center gap-3">
+                <div class="w-10 h-10 bg-primary rounded-xl flex items-center justify-center">
+                    <svg class="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8"/>
+                    </svg>
+                </div>
+                <div>
+                    <h1 class="text-xl font-bold text-gray-800">PNR数据提取工具</h1>
+                    <p class="text-xs text-gray-400">航空公司大客户 GP/VICO/FP 信息查询</p>
+                </div>
+            </div>
+            <div class="flex items-center gap-2 text-sm text-gray-400">
+                <span class="w-1.5 h-1.5 bg-success rounded-full inline-block"></span>
+                服务运行中
+            </div>
+        </div>
+    </header>
+
+    <!-- 主内容区 -->
+    <main class="max-w-6xl mx-auto px-6 py-8" id="app">
+        <!-- 功能标签 -->
+        <div class="flex gap-1 mb-0">
+            <button class="tab-btn active" onclick="switchTab('single')" id="tab-single">
+                <svg class="w-4 h-4 inline mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
+                单个查询
+            </button>
+            <button class="tab-btn" onclick="switchTab('batch')" id="tab-batch">
+                <svg class="w-4 h-4 inline mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 17V7m0 10a2 2 0 01-2 2H5a2 2 0 01-2-2V7a2 2 0 012-2h2a2 2 0 012 2m0 10a2 2 0 002 2h2a2 2 0 002-2M9 7a2 2 0 012-2h2a2 2 0 012 2m0 10V7"/></svg>
+                批量查询
+            </button>
+        </div>
+
+        <!-- 单个查询面板 -->
+        <div id="panel-single" class="card p-8 rounded-tr-xl rounded-b-xl">
+            <div class="flex flex-col md:flex-row gap-4 items-end">
+                <div class="flex-1">
+                    <label class="block text-sm font-semibold text-gray-700 mb-2">PNR号</label>
+                    <input type="text" id="singlePnr" class="input-field" 
+                           placeholder="输入6位PNR号，例如：KF1XHV" maxlength="6" autofocus>
+                </div>
+                <div class="w-full md:w-40">
+                    <label class="block text-sm font-semibold text-gray-700 mb-2">Office代码</label>
+                    <input type="text" id="singleOffice" class="input-field" value="KMG319" maxlength="6">
+                </div>
+                <div class="w-full md:w-auto">
+                    <button class="btn-primary w-full md:w-auto px-8 py-3 text-base" onclick="querySingle()" id="btnSingleQuery">
+                        查询
+                    </button>
+                </div>
+            </div>
+
+            <!-- 单个查询结果 -->
+            <div id="singleResult" class="mt-6 hidden">
+                <div class="border-t border-gray-100 pt-6">
+                    <h3 class="text-lg font-bold text-gray-800 mb-4">查询结果</h3>
+                    <div class="overflow-x-auto">
+                        <table class="result-table rounded-xl overflow-hidden border border-gray-100">
+                            <thead>
+                                <tr>
+                                    <th>PNR</th>
+                                    <th>订单ID</th>
+                                    <th>GP代码</th>
+                                    <th>VICO_A值</th>
+                                    <th>VICO_B值</th>
+                                    <th>FP_C值</th>
+                                    <th>状态</th>
+                                </tr>
+                            </thead>
+                            <tbody id="singleResultBody"></tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 最近查询历史 -->
+            <div id="recentHistory" class="mt-6 hidden">
+                <div class="border-t border-gray-100 pt-6">
+                    <div class="flex items-center justify-between mb-4">
+                        <h3 class="text-lg font-bold text-gray-800">历史查询</h3>
+                        <button onclick="clearHistory()" class="text-sm text-gray-400 hover:text-danger transition">清空记录</button>
+                    </div>
+                    <div class="overflow-x-auto">
+                        <table class="result-table rounded-xl overflow-hidden border border-gray-100">
+                            <thead>
+                                <tr><th>PNR</th><th>GP代码</th><th>VICO_A</th><th>VICO_B</th><th>FP_C值</th><th>状态</th><th>时间</th></tr>
+                            </thead>
+                            <tbody id="historyBody"></tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 批量查询面板 -->
+        <div id="panel-batch" class="card p-8 rounded-tr-xl rounded-b-xl hidden">
+            <div class="flex flex-col md:flex-row gap-4 items-end mb-6">
+                <div class="flex-1">
+                    <label class="block text-sm font-semibold text-gray-700 mb-2">上传PNR列表（Excel文件）</label>
+                    <div class="file-upload-area" id="uploadArea" onclick="document.getElementById('batchFile').click()">
+                        <div class="upload-icon">
+                            <svg class="w-12 h-12 mx-auto text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"/>
+                            </svg>
+                        </div>
+                        <p class="text-gray-500 font-medium mb-1">点击上传 或拖拽Excel文件到此处</p>
+                        <p class="text-gray-400 text-sm">支持 .xlsx / .xls 格式，第一列为PNR号</p>
+                        <input type="file" id="batchFile" accept=".xlsx,.xls" class="hidden" onchange="handleFileSelect(event)">
+                    </div>
+                    <p id="selectedFile" class="text-sm text-primary font-medium mt-2 hidden"></p>
+                </div>
+                <div class="w-full md:w-40">
+                    <label class="block text-sm font-semibold text-gray-700 mb-2">Office代码</label>
+                    <input type="text" id="batchOffice" class="input-field" value="KMG319" maxlength="6">
+                </div>
+                <div class="flex gap-2 w-full md:w-auto">
+                    <button class="btn-secondary px-4 py-3 text-sm" onclick="downloadTemplate()">下载模板</button>
+                    <button class="btn-primary px-8 py-3 text-base" onclick="queryBatch()" id="btnBatchQuery">开始查询</button>
+                </div>
+            </div>
+
+            <!-- 批量查询进度 -->
+            <div id="batchProgress" class="hidden mb-6">
+                <div class="flex items-center justify-between mb-2">
+                    <span class="text-sm font-semibold text-gray-600" id="progressText">正在查询...</span>
+                    <span class="text-sm text-gray-400" id="progressCount">0/0</span>
+                </div>
+                <div class="progress-bar-bg"><div class="progress-bar-fg" id="progressBar" style="width: 0%"></div></div>
+            </div>
+
+            <!-- 批量结果表格 -->
+            <div id="batchResult" class="hidden">
+                <div class="border-t border-gray-100 pt-6">
+                    <div class="flex items-center justify-between mb-4">
+                        <h3 class="text-lg font-bold text-gray-800">查询结果</h3>
+                        <button class="btn-secondary px-4 py-2 text-sm" onclick="downloadBatchResult()">下载Excel结果</button>
+                    </div>
+                    <!-- 错误摘要 -->
+                    <div id="errorSummary" class="hidden mb-4 p-4 bg-red-50 border border-red-100 rounded-xl">
+                        <p class="text-sm font-semibold text-red-700 mb-2">错误原因汇总：</p>
+                        <ul id="errorSummaryList" class="text-sm text-red-600 space-y-1"></ul>
+                    </div>
+                    <div class="overflow-x-auto">
+                        <table class="result-table rounded-xl overflow-hidden border border-gray-100">
+                            <thead>
+                                <tr><th>#</th><th>PNR</th><th>订单ID</th><th>GP代码</th><th>VICO_A</th><th>VICO_B</th><th>FP_C值</th><th>状态</th><th>错误信息</th></tr>
+                            </thead>
+                            <tbody id="batchResultBody"></tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 统计卡片 -->
+        <div id="statsArea" class="grid grid-cols-2 md:grid-cols-4 gap-4 mt-6 hidden">
+            <div class="stats-card"><div class="stats-value text-primary" id="statTotal">0</div><div class="stats-label">总查询数</div></div>
+            <div class="stats-card"><div class="stats-value text-success" id="statSuccess">0</div><div class="stats-label">查询成功</div></div>
+            <div class="stats-card"><div class="stats-value text-danger" id="statFail">0</div><div class="stats-label">查询失败</div></div>
+            <div class="stats-card"><div class="stats-value text-warning" id="statRate">0%</div><div class="stats-label">成功率</div></div>
+        </div>
+    </main>
+
+    <footer class="text-center py-6 text-gray-400 text-xs">
+        PNR数据提取工具 · 基于中国航信 eTerm API · 仅供内部使用
+    </footer>
+
+    <script>
+        // 全局状态
+        let currentTab = 'single';
+        let queryHistory = JSON.parse(localStorage.getItem('pnr_history') || '[]');
+        let batchResults = [];
+        let stats = { total: 0, success: 0, fail: 0 };
+
+        // ========== Toast 消息 ==========
+        function showToast(msg, type = 'info') {
+            const t = document.getElementById('toast');
+            t.textContent = msg; t.className = `toast ${type}`;
+            requestAnimationFrame(() => t.classList.add('show'));
+            setTimeout(() => t.classList.remove('show'), 3000);
+        }
+
+        // ========== 标签切换 ==========
+        function switchTab(tab) {
+            currentTab = tab;
+            document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+            document.getElementById('tab-' + tab).classList.add('active');
+            document.getElementById('panel-single').classList.toggle('hidden', tab !== 'single');
+            document.getElementById('panel-batch').classList.toggle('hidden', tab !== 'batch');
+        }
+
+        // ========== 单个查询 ==========
+        async function querySingle() {
+            const pnr = document.getElementById('singlePnr').value.trim().toUpperCase();
+            const office = document.getElementById('singleOffice').value.trim() || 'KMG319';
+            const btn = document.getElementById('btnSingleQuery');
+
+            if (!pnr) { showToast('请输入PNR号', 'error'); return; }
+            if (!/^[A-Z0-9]{5,6}$/.test(pnr)) { showToast('PNR号格式不正确', 'error'); return; }
+
+            btn.disabled = true;
+            btn.innerHTML = '<span class="spinner"></span> 查询中...';
+            document.getElementById('singleResult').classList.add('hidden');
+
+            try {
+                const res = await fetch('/api/query_single', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ pnr, office })
+                });
+                const data = await res.json();
+
+                if (!data.success) { showToast(data.message, 'error'); return; }
+
+                const r = data.data;
+                const statusTag = r.status === 'success' ? '<span class="tag-success">成功</span>' :
+                    r.status === 'failed' ? '<span class="tag-fail">失败</span>' : '<span class="tag-warning">查询失败</span>';
+
+                document.getElementById('singleResultBody').innerHTML = `
+                    <tr>
+                        <td class="font-semibold text-primary">${r.pnr || '-'}</td>
+                        <td>${r.order_id || '-'}</td>
+                        <td class="font-mono font-semibold text-success">${r.gp_code || '-'}</td>
+                        <td>${r.vico_a || '-'}</td>
+                        <td>${r.vico_b || '-'}</td>
+                        <td class="font-mono text-sm">${r.fp_c_value || '-'}</td>
+                        <td>${statusTag}</td>
+                    </tr>`;
+                document.getElementById('singleResult').classList.remove('hidden');
+
+                // 保存到历史
+                addToHistory(r);
+            } catch (e) {
+                showToast('网络错误，请重试', 'error');
+            } finally {
+                btn.disabled = false;
+                btn.innerHTML = '查询';
+            }
+        }
+
+        // ========== 历史记录 ==========
+        function addToHistory(result) {
+            const item = { ...result, time: new Date().toLocaleString('zh-CN') };
+            queryHistory.unshift(item);
+            if (queryHistory.length > 20) queryHistory = queryHistory.slice(0, 20);
+            localStorage.setItem('pnr_history', JSON.stringify(queryHistory));
+            renderHistory();
+        }
+
+        function renderHistory() {
+            const area = document.getElementById('recentHistory');
+            const body = document.getElementById('historyBody');
+            if (queryHistory.length === 0) { area.classList.add('hidden'); return; }
+            area.classList.remove('hidden');
+
+            body.innerHTML = queryHistory.map(r => {
+                const tag = r.status === 'success' ? '<span class="tag-success">成功</span>' :
+                    r.status === 'failed' ? '<span class="tag-fail">失败</span>' : '<span class="tag-warning">查询失败</span>';
+                return `<tr>
+                    <td class="font-semibold">${r.pnr}</td>
+                    <td class="font-mono text-success">${r.gp_code || '-'}</td>
+                    <td>${r.vico_a || '-'}</td>
+                    <td>${r.vico_b || '-'}</td>
+                    <td class="font-mono text-xs">${r.fp_c_value || '-'}</td>
+                    <td>${tag}</td>
+                    <td class="text-gray-400 text-xs">${r.time}</td>
+                </tr>`;
+            }).join('');
+        }
+
+        function clearHistory() {
+            queryHistory = [];
+            localStorage.removeItem('pnr_history');
+            document.getElementById('recentHistory').classList.add('hidden');
+            showToast('历史记录已清空', 'info');
+        }
+
+        // ========== 文件上传 ==========
+        function handleFileSelect(e) {
+            const file = e.target.files[0];
+            if (!file) return;
+            document.getElementById('selectedFile').textContent = '已选择: ' + file.name;
+            document.getElementById('selectedFile').classList.remove('hidden');
+        }
+
+        // 拖拽上传
+        const uploadArea = document.getElementById('uploadArea');
+        ['dragenter', 'dragover'].forEach(ev => uploadArea.addEventListener(ev, e => { e.preventDefault(); uploadArea.classList.add('dragover'); }));
+        ['dragleave', 'drop'].forEach(ev => uploadArea.addEventListener(ev, e => { e.preventDefault(); uploadArea.classList.remove('dragover'); }));
+        uploadArea.addEventListener('drop', e => {
+            const files = e.dataTransfer.files;
+            if (files.length > 0) {
+                document.getElementById('batchFile').files = files;
+                handleFileSelect({ target: { files } });
+            }
+        });
+
+        // ========== 批量查询 ==========
+        async function queryBatch() {
+            const fileInput = document.getElementById('batchFile');
+            const file = fileInput.files[0];
+            if (!file) { showToast('请先上传Excel文件', 'error'); return; }
+
+            const office = document.getElementById('batchOffice').value.trim() || 'KMG319';
+            const btn = document.getElementById('btnBatchQuery');
+            btn.disabled = true;
+            btn.innerHTML = '<span class="spinner"></span> 查询中...';
+
+            const formData = new FormData();
+            formData.append('file', file);
+            formData.append('office', office);
+
+            // 显示进度
+            document.getElementById('batchProgress').classList.remove('hidden');
+            document.getElementById('batchResult').classList.add('hidden');
+            document.getElementById('statsArea').classList.add('hidden');
+            document.getElementById('progressBar').style.width = '30%';
+            document.getElementById('progressText').textContent = '正在查询API...';
+
+            try {
+                const res = await fetch('/api/progress_query_batch', { method: 'POST', body: formData });
+                const data = await res.json();
+                document.getElementById('progressBar').style.width = '100%';
+
+                if (!data.success) { showToast(data.message, 'error'); return; }
+
+                batchResults = data.data;
+                stats = { total: data.total, success: data.success_count, fail: data.total - data.success_count };
+
+                // 显示错误摘要
+                const errSummary = document.getElementById('errorSummary');
+                const errList = document.getElementById('errorSummaryList');
+                if (data.error_summary && Object.keys(data.error_summary).length > 0) {
+                    errList.innerHTML = Object.entries(data.error_summary).map(([msg, count]) =>
+                        `<li>"${msg}" — ${count} 条</li>`
+                    ).join('');
+                    errSummary.classList.remove('hidden');
+                } else {
+                    errSummary.classList.add('hidden');
+                }
+
+                // 渲染结果表
+                document.getElementById('batchResultBody').innerHTML = batchResults.map((r, i) => {
+                    const tag = r.status === 'success' ? '<span class="tag-success">成功</span>' :
+                        r.status === 'failed' ? '<span class="tag-fail">失败</span>' : '<span class="tag-warning">查询失败</span>';
+                    const errTip = r.error_msg ? `<span title="${r.error_msg.replace(/"/g, '&quot;')}" class="text-red-500 text-xs cursor-help">${r.error_msg.substring(0, 20)}${r.error_msg.length > 20 ? '...' : ''}</span>` : '-';
+                    return `<tr>
+                        <td class="text-gray-400 text-xs">${i + 1}</td>
+                        <td class="font-semibold text-primary">${r.pnr || '-'}</td>
+                        <td class="text-sm">${r.order_id || '-'}</td>
+                        <td class="font-mono font-semibold text-success">${r.gp_code || '-'}</td>
+                        <td>${r.vico_a || '-'}</td>
+                        <td>${r.vico_b || '-'}</td>
+                        <td class="font-mono text-xs">${r.fp_c_value || '-'}</td>
+                        <td>${tag}</td>
+                        <td>${errTip}</td>
+                    </tr>`;
+                }).join('');
+
+                document.getElementById('batchResult').classList.remove('hidden');
+                updateStats();
+                showToast(`查询完成：成功 ${stats.success} / 失败 ${stats.fail}`, stats.fail > 0 ? 'error' : 'success');
+            } catch (e) {
+                showToast('查询失败，请重试', 'error');
+            } finally {
+                btn.disabled = false;
+                btn.innerHTML = '开始查询';
+                document.getElementById('batchProgress').classList.add('hidden');
+            }
+        }
+
+        function updateStats() {
+            document.getElementById('statTotal').textContent = stats.total;
+            document.getElementById('statSuccess').textContent = stats.success;
+            document.getElementById('statFail').textContent = stats.fail;
+            document.getElementById('statRate').textContent = stats.total > 0 ? Math.round(stats.success / stats.total * 100) + '%' : '0%';
+            document.getElementById('statsArea').classList.remove('hidden');
+        }
+
+        async function downloadBatchResult() {
+            const fileInput = document.getElementById('batchFile');
+            const file = fileInput.files[0];
+            if (!file) { showToast('请先上传文件', 'error'); return; }
+
+            const office = document.getElementById('batchOffice').value.trim() || 'KMG319';
+            const formData = new FormData();
+            formData.append('file', file);
+            formData.append('office', office);
+
+            try {
+                const res = await fetch('/api/query_batch', { method: 'POST', body: formData });
+                if (!res.ok) throw new Error('下载失败');
+
+                const blob = await res.blob();
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `PNR查询结果_${new Date().toISOString().slice(0,10)}.xlsx`;
+                a.click();
+                URL.revokeObjectURL(url);
+                showToast('文件下载成功', 'success');
+            } catch (e) {
+                showToast('下载失败', 'error');
+            }
+        }
+
+        function downloadTemplate() {
+            window.location.href = '/api/create_template';
+        }
+
+        // ========== 初始化 ==========
+        document.addEventListener('DOMContentLoaded', () => {
+            renderHistory();
+            // Enter 键触发查询
+            document.getElementById('singlePnr').addEventListener('keydown', e => {
+                if (e.key === 'Enter') querySingle();
+            });
+        });
+    </script>
+</body>
+</html>

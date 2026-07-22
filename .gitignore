@@ -1,0 +1,34 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+eggs/
+.eggs/
+
+# PyInstaller
+*.spec
+*.exe
+
+# Virtual Environment
+venv/
+.venv/
+env/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Temp/PNR data (避免提交敏感数据)
+*.tmp
+temp/
+
+# CodeBuddy
+.codebuddy/
