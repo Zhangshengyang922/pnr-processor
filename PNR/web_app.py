@@ -112,22 +112,15 @@ def extract_vico_e(text: str) -> Optional[str]:
     """从 FP/CASH,CNY/* 文本中提取 E 值"""
     if not text:
         return None
-    # 模式1: FP/CASH,CNY/*KMGxxxxxxx/ 后面的值
-    fp_match = re.search(r'FP/CASH,CNY/\*KMG\d{7}/([A-Z0-9]+)', text)
-    if fp_match:
-        return fp_match.group(1)
-    # 模式2: / + 字母加数字组合
-    e_match = re.search(r'/\*KMG\d{7}/\d*([A-Z]+\d+)', text)
-    if e_match:
-        return e_match.group(1)
-    # 模式3: 单独的 /E 后跟数字
-    e_alone = re.search(r'/(E\d+)', text)
-    if e_alone:
-        return e_alone.group(1)
-    # 模式4: FP/CASH 后的尾部信息
-    fp_tail = re.search(r'FP/CASH,CNY/\*KMG\d{7}.*?/([^/\s]+)$', text)
-    if fp_tail:
-        return fp_tail.group(1)
+    # 模式1: FP/CASH,CNY/*KMG\d{7}/ 后面的值（C值在前 / E值在后）
+    m1 = re.search(r'FP/CASH,CNY/\*KMG\d{7}/([A-Z0-9]+)', text)
+    if m1:
+        return m1.group(1)
+    # 模式2: FP/CASH,CNY/* 后面直接跟非 KMG 的值（E 值本身）
+    # 例如: FP/CASH,CNY/*GN0135KM → GN0135KM
+    m2 = re.search(r'FP/CASH,CNY/\*((?!KMG\d)[A-Z0-9]+)', text)
+    if m2:
+        return m2.group(1)
     return None
 
 

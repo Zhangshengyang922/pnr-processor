@@ -159,39 +159,31 @@ def extract_fp_c_value(text: str) -> Optional[str]:
 def extract_vico_e(text: str) -> Optional[str]:
     """
     从 FP/CASH,CNY/* 文本中提取 E 值
-    
-    E 值特征：在 FP/CASH,CNY/*KMGxxxxxxx 之后的内容，
-    匹配格式: FP/CASH,CNY/*KMG\d{7}/([A-Z0-9]+)
-    或在原文中查找其他 E 值标识
-    
+
+    E 值数据格式例如：
+        FP/CASH,CNY/*GN0135KM     → E = GN0135KM
+        FP/CASH,CNY/*KMG1234567   → 这是 C 值，不是 E 值
+        两者可能同时出现在原文中
+
     Args:
         text: 原始 originalRTC 文本
-    
+
     Returns:
         提取到的 E 值，未找到返回 None
     """
     if not text:
         return None
 
-    # 模式1: FP/CASH,CNY/*KMGxxxxxxx/ 后面的值
-    fp_match = re.search(r'FP/CASH,CNY/\*KMG\d{7}/([A-Z0-9]+)', text)
-    if fp_match:
-        return fp_match.group(1)
+    # 模式1: FP/CASH,CNY/*KMG\d{7}/ 后面的值（C值在前 / E值在后）
+    m1 = re.search(r'FP/CASH,CNY/\*KMG\d{7}/([A-Z0-9]+)', text)
+    if m1:
+        return m1.group(1)
 
-    # 模式2: 在 originalRTC 中寻找 / + 非空格字母数字 + 可能与数字组合
-    e_match = re.search(r'/\*KMG\d{7}/\d*([A-Z]+\d+)', text)
-    if e_match:
-        return e_match.group(1)
-
-    # 模式3: 单独的 /E 后跟数字
-    e_alone = re.search(r'/(E\d+)', text)
-    if e_alone:
-        return e_alone.group(1)
-
-    # 模式4: FP/CASH 后面可能有的第二段关键信息
-    fp_tail = re.search(r'FP/CASH,CNY/\*KMG\d{7}.*?/([^/\s]+)$', text)
-    if fp_tail:
-        return fp_tail.group(1)
+    # 模式2: FP/CASH,CNY/* 后面直接跟非 KMG 的值（即 E 值本身）
+    # 例如: FP/CASH,CNY/*GN0135KM → 提取 GN0135KM
+    m2 = re.search(r'FP/CASH,CNY/\*((?!KMG\d)[A-Z0-9]+)', text)
+    if m2:
+        return m2.group(1)
 
     return None
 
