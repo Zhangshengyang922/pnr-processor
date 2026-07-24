@@ -215,6 +215,8 @@
                                     <th>GP代码</th>
                                     <th>VICO_A值</th>
                                     <th>VICO_B值</th>
+                                    <th>VICO_D值</th>
+                                    <th>VICO_E值</th>
                                     <th>FP_C值</th>
                                     <th>状态</th>
                                 </tr>
@@ -235,7 +237,7 @@
                     <div class="overflow-x-auto">
                         <table class="result-table rounded-xl overflow-hidden border border-gray-100">
                             <thead>
-                                <tr><th>PNR</th><th>GP代码</th><th>VICO_A</th><th>VICO_B</th><th>FP_C值</th><th>状态</th><th>时间</th></tr>
+                                <tr><th>PNR</th><th>GP代码</th><th>VICO_A</th><th>VICO_B</th><th>VICO_D</th><th>VICO_E</th><th>FP_C值</th><th>状态</th><th>时间</th></tr>
                             </thead>
                             <tbody id="historyBody"></tbody>
                         </table>
@@ -295,7 +297,7 @@
                     <div class="overflow-x-auto">
                         <table class="result-table rounded-xl overflow-hidden border border-gray-100">
                             <thead>
-                                <tr><th>#</th><th>PNR</th><th>订单ID</th><th>GP代码</th><th>VICO_A</th><th>VICO_B</th><th>FP_C值</th><th>状态</th><th>错误信息</th></tr>
+                                <tr><th>#</th><th>PNR</th><th>订单ID</th><th>GP代码</th><th>VICO_A</th><th>VICO_B</th><th>VICO_D</th><th>VICO_E</th><th>FP_C值</th><th>状态</th><th>错误信息</th></tr>
                             </thead>
                             <tbody id="batchResultBody"></tbody>
                         </table>
@@ -375,6 +377,8 @@
                         <td class="font-mono font-semibold text-success">${r.gp_code || '-'}</td>
                         <td>${r.vico_a || '-'}</td>
                         <td>${r.vico_b || '-'}</td>
+                        <td>${r.vico_d || '-'}</td>
+                        <td>${r.vico_e || '-'}</td>
                         <td class="font-mono text-sm">${r.fp_c_value || '-'}</td>
                         <td>${statusTag}</td>
                     </tr>`;
@@ -413,6 +417,8 @@
                     <td class="font-mono text-success">${r.gp_code || '-'}</td>
                     <td>${r.vico_a || '-'}</td>
                     <td>${r.vico_b || '-'}</td>
+                    <td>${r.vico_d || '-'}</td>
+                    <td>${r.vico_e || '-'}</td>
                     <td class="font-mono text-xs">${r.fp_c_value || '-'}</td>
                     <td>${tag}</td>
                     <td class="text-gray-400 text-xs">${r.time}</td>
@@ -503,6 +509,8 @@
                         <td class="font-mono font-semibold text-success">${r.gp_code || '-'}</td>
                         <td>${r.vico_a || '-'}</td>
                         <td>${r.vico_b || '-'}</td>
+                        <td>${r.vico_d || '-'}</td>
+                        <td>${r.vico_e || '-'}</td>
                         <td class="font-mono text-xs">${r.fp_c_value || '-'}</td>
                         <td>${tag}</td>
                         <td>${errTip}</td>

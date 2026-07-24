@@ -76,7 +76,7 @@ def extract_gp_code(endorsement_infos: list) -> Optional[str]:
 
 
 def extract_vico_values(ssrs: list) -> Dict[str, Optional[str]]:
-    result = {'vico_a': None, 'vico_b': None}
+    result = {'vico_a': None, 'vico_b': None, 'vico_d': None}
     if not ssrs:
         return result
     for item in ssrs:
@@ -85,12 +85,14 @@ def extract_vico_values(ssrs: list) -> Dict[str, Optional[str]]:
         text = item.get('text', '')
         if not text:
             continue
-        vico_matches = re.findall(r'VICO\d*GP\d*', text)
-        for match in vico_matches:
-            if match == 'VICOGP' or re.match(r'^VICOGP\d+$', match):
+        all_vico = re.findall(r'VICO[A-Z0-9]+', text)
+        for match in all_vico:
+            if re.match(r'^VICOGP\d*$', match):
                 result['vico_a'] = match
             elif re.match(r'^VICO\d{2}GP\d+$', match):
                 result['vico_b'] = match
+            elif 'GP' not in match:
+                result['vico_d'] = match
     return result
 
 
@@ -106,10 +108,33 @@ def extract_fp_c_value(text: str) -> Optional[str]:
     return None
 
 
+def extract_vico_e(text: str) -> Optional[str]:
+    """从 FP/CASH,CNY/* 文本中提取 E 值"""
+    if not text:
+        return None
+    # 模式1: FP/CASH,CNY/*KMGxxxxxxx/ 后面的值
+    fp_match = re.search(r'FP/CASH,CNY/\*KMG\d{7}/([A-Z0-9]+)', text)
+    if fp_match:
+        return fp_match.group(1)
+    # 模式2: / + 字母加数字组合
+    e_match = re.search(r'/\*KMG\d{7}/\d*([A-Z]+\d+)', text)
+    if e_match:
+        return e_match.group(1)
+    # 模式3: 单独的 /E 后跟数字
+    e_alone = re.search(r'/(E\d+)', text)
+    if e_alone:
+        return e_alone.group(1)
+    # 模式4: FP/CASH 后的尾部信息
+    fp_tail = re.search(r'FP/CASH,CNY/\*KMG\d{7}.*?/([^/\s]+)$', text)
+    if fp_tail:
+        return fp_tail.group(1)
+    return None
+
+
 def process_pnr_response(response_data: Dict) -> Dict:
     result = {
         'pnr': None, 'gp_code': None, 'vico_a': None,
-        'vico_b': None, 'fp_c_value': None, 'order_id': None,
+        'vico_b': None, 'vico_d': None, 'vico_e': None, 'fp_c_value': None, 'order_id': None,
         'status': 'error', 'error_msg': None
     }
     try:
@@ -172,12 +197,16 @@ def process_pnr_response(response_data: Dict) -> Dict:
             fp_c_value = extract_fp_c_value(original_rtc)
             if fp_c_value:
                 result['fp_c_value'] = fp_c_value
+            vico_e = extract_vico_e(original_rtc)
+            if vico_e:
+                result['vico_e'] = vico_e
 
         # 提取 VICO 值
         ssrs = pnr_data.get('ssrs', [])
         vico_values = extract_vico_values(ssrs)
         result['vico_a'] = vico_values['vico_a']
         result['vico_b'] = vico_values['vico_b']
+        result['vico_d'] = vico_values['vico_d']
 
         result['status'] = 'success'
     except Exception as e:
@@ -197,7 +226,7 @@ def query_and_extract(pnr: str, office: str = "KMG319") -> Dict:
     else:
         return {
             'pnr': pnr, 'gp_code': None, 'vico_a': None,
-            'vico_b': None, 'fp_c_value': None, 'order_id': None,
+            'vico_b': None, 'vico_d': None, 'vico_e': None, 'fp_c_value': None, 'order_id': None,
             'status': 'query_failed', 'error_msg': error_msg
         }
 
@@ -274,8 +303,8 @@ def api_query_batch():
         success_fill = PatternFill(start_color='C6EFCE', end_color='C6EFCE', fill_type='solid')
         fail_fill = PatternFill(start_color='FFC7CE', end_color='FFC7CE', fill_type='solid')
 
-        headers = ['PNR', '订单ID', 'GP代码', 'VICO_A值', 'VICO_B值', 'FP_C值', '状态']
-        col_widths = [15, 25, 20, 18, 18, 28, 14]
+        headers = ['PNR', '订单ID', 'GP代码', 'VICO_A值', 'VICO_B值', 'VICO_D值', 'VICO_E值', 'FP_C值', '状态']
+        col_widths = [15, 25, 20, 18, 18, 18, 18, 28, 14]
         for col, (h, w) in enumerate(zip(headers, col_widths), 1):
             cell = out_ws.cell(row=1, column=col, value=h)
             cell.font = header_font
@@ -293,14 +322,14 @@ def api_query_batch():
 
             row = idx + 2
             values = [result['pnr'], result['order_id'], result['gp_code'],
-                       result['vico_a'], result['vico_b'], result['fp_c_value'], result['status']]
+                       result['vico_a'], result['vico_b'], result['vico_d'], result['vico_e'], result['fp_c_value'], result['status']]
             for col, val in enumerate(values, 1):
                 cell = out_ws.cell(row=row, column=col, value=val if val else '')
                 cell.border = thin_border
                 cell.alignment = Alignment(horizontal='center', vertical='center')
 
             # 状态着色
-            status_cell = out_ws.cell(row=row, column=7)
+            status_cell = out_ws.cell(row=row, column=9)
             if result['status'] == 'success':
                 status_cell.fill = success_fill
                 success_count += 1
@@ -395,8 +424,8 @@ def api_create_template():
         top=Side(style='thin'), bottom=Side(style='thin')
     )
 
-    headers = ['PNR', '订单ID', 'GP代码', 'VICO_A值', 'VICO_B值', 'FP_C值', '状态']
-    col_widths = [15, 25, 20, 18, 18, 28, 14]
+    headers = ['PNR', '订单ID', 'GP代码', 'VICO_A值', 'VICO_B值', 'VICO_D值', 'VICO_E值', 'FP_C值', '状态']
+    col_widths = [15, 25, 20, 18, 18, 18, 18, 28, 14]
     for col, (h, w) in enumerate(zip(headers, col_widths), 1):
         cell = ws.cell(row=1, column=col, value=h)
         cell.font = header_font
@@ -411,7 +440,7 @@ def api_create_template():
         cell.fill = input_fill
         cell.alignment = Alignment(horizontal='center')
         cell.border = thin_border
-        for c in range(2, 8):
+        for c in range(2, 10):
             ws.cell(row=r, column=c).border = thin_border
 
     output = io.BytesIO()
@@ -427,23 +456,77 @@ def api_create_template():
 
 # ==================== 启动 ====================
 
+import socket
+import webbrowser
+import threading
+
+
+def find_free_port(start=5000, max_attempts=20):
+    """自动寻找空闲端口"""
+    for port in range(start, start + max_attempts):
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+            s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            try:
+                s.bind(('', port))
+                return port
+            except OSError:
+                continue
+    return None
+
+
+def get_lan_ip():
+    """获取局域网 IP 地址"""
+    try:
+        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
+            s.connect(('8.8.8.8', 80))
+            return s.getsockname()[0]
+    except Exception:
+        return None
+
+
 if __name__ == '__main__':
-    # 开发模式下确保 templates 目录存在
-    if not getattr(sys, 'frozen', False):
-        os.makedirs(resource_path('templates'), exist_ok=True)
+    try:
+        # 开发模式下确保 templates 目录存在
+        if not getattr(sys, 'frozen', False):
+            os.makedirs(resource_path('templates'), exist_ok=True)
 
-    import webbrowser
-    import threading
+        # 自动寻找空闲端口
+        port = find_free_port(5000)
+        if port is None:
+            print("=" * 60)
+            print("  [错误] 端口 5000-5019 全部被占用！")
+            print("  请关闭占用端口的程序后重试。")
+            print("=" * 60)
+            input("\n按 Enter 键退出...")
+            sys.exit(1)
 
-    port = 5000
-    url = f"http://127.0.0.1:{port}"
+        lan_ip = get_lan_ip()
 
-    print("=" * 60)
-    print("  PNR数据提取工具 - Web版")
-    print(f"  浏览器访问: {url}")
-    print("=" * 60)
+        print("=" * 60)
+        print("    PNR数据提取工具 - Web版  v2.0")
+        print("=" * 60)
+        print(f"\n  本机访问:  http://127.0.0.1:{port}")
+        if lan_ip:
+            print(f"  局域网访问:  http://{lan_ip}:{port}")
+        print(f"\n  (浏览器将自动打开，如未打开请手动复制上方地址)")
+        print(f"  按 Ctrl+C 或关闭本窗口即可退出程序")
+        print("=" * 60)
 
-    # 延迟1秒后自动打开浏览器
-    threading.Timer(1.2, lambda: webbrowser.open(url)).start()
+        # 自动打开浏览器
+        def open_browser():
+            time.sleep(1.5)
+            try:
+                webbrowser.open(f"http://127.0.0.1:{port}")
+            except Exception:
+                pass  # 浏览器打开失败不算严重错误
 
-    app.run(debug=False, host='0.0.0.0', port=port, threaded=True)
+        threading.Thread(target=open_browser, daemon=True).start()
+
+        # 启动 Flask
+        app.run(debug=False, host='0.0.0.0', port=port, threaded=True)
+
+    except KeyboardInterrupt:
+        print("\n\n程序已退出。")
+    except Exception as e:
+        print(f"\n[启动失败] {e}")
+        input("\n按 Enter 键退出...")

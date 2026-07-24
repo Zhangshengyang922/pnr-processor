@@ -70,18 +70,24 @@ def extract_gp_code(endorsement_infos: list) -> Optional[str]:
 
 def extract_vico_values(ssrs: list) -> Dict[str, Optional[str]]:
     """
-    从ssrs中提取VICO开头的A值和B值
+    从ssrs中提取VICO开头的A值、B值和D值
 
     Args:
         ssrs: ssrs数组
 
     Returns:
-        包含A值和B值的字典: {'vico_a': str, 'vico_b': str}
+        包含A值、B值、D值的字典: {'vico_a': str, 'vico_b': str, 'vico_d': str}
         未找到的值返回None
+
+    VICO值分类规则:
+        - A值: VICOGP 或 VICOGP+数字（后缀以GP开头）
+        - B值: VICO+两位数字+GP+数字（后缀不以GP开头，中间含GP）
+        - D值: VICO开头但不包含GP（后缀不以GP开头且不含GP）
     """
     result = {
         'vico_a': None,
-        'vico_b': None
+        'vico_b': None,
+        'vico_d': None
     }
 
     if not ssrs:
@@ -97,21 +103,21 @@ def extract_vico_values(ssrs: list) -> Dict[str, Optional[str]]:
         if not text:
             continue
 
-        # 提取VICO开头的值，匹配格式: VICOGP 或 VICOxxGPxxx
-        # A值特征: VICOGP (直接VICOGP)
-        # B值特征: VICO47GP266 (有两位数字)
-        vico_matches = re.findall(r'VICO\d*GP\d*', text)
-        if not vico_matches:
+        # 匹配所有 VICO 开头的值
+        all_vico = re.findall(r'VICO[A-Z0-9]+', text)
+        if not all_vico:
             continue
 
-        for match in vico_matches:
-            # 判断是A值还是B值
-            if match == 'VICOGP' or re.match(r'^VICOGP\d+$', match):
-                # 这是A值
+        for match in all_vico:
+            # A值: VICOGP 或 VICOGP+数字（后缀以GP开头）
+            if re.match(r'^VICOGP\d*$', match):
                 result['vico_a'] = match
+            # B值: VICO+两位数字+GP+数字（后缀不以GP开头，中间含GP）
             elif re.match(r'^VICO\d{2}GP\d+$', match):
-                # 这是B值
                 result['vico_b'] = match
+            # D值: VICO开头但不包含GP（后缀不以GP开头且不含GP）
+            elif 'GP' not in match:
+                result['vico_d'] = match
 
     return result
 
@@ -150,6 +156,46 @@ def extract_fp_c_value(text: str) -> Optional[str]:
     return None
 
 
+def extract_vico_e(text: str) -> Optional[str]:
+    """
+    从 FP/CASH,CNY/* 文本中提取 E 值
+    
+    E 值特征：在 FP/CASH,CNY/*KMGxxxxxxx 之后的内容，
+    匹配格式: FP/CASH,CNY/*KMG\d{7}/([A-Z0-9]+)
+    或在原文中查找其他 E 值标识
+    
+    Args:
+        text: 原始 originalRTC 文本
+    
+    Returns:
+        提取到的 E 值，未找到返回 None
+    """
+    if not text:
+        return None
+
+    # 模式1: FP/CASH,CNY/*KMGxxxxxxx/ 后面的值
+    fp_match = re.search(r'FP/CASH,CNY/\*KMG\d{7}/([A-Z0-9]+)', text)
+    if fp_match:
+        return fp_match.group(1)
+
+    # 模式2: 在 originalRTC 中寻找 / + 非空格字母数字 + 可能与数字组合
+    e_match = re.search(r'/\*KMG\d{7}/\d*([A-Z]+\d+)', text)
+    if e_match:
+        return e_match.group(1)
+
+    # 模式3: 单独的 /E 后跟数字
+    e_alone = re.search(r'/(E\d+)', text)
+    if e_alone:
+        return e_alone.group(1)
+
+    # 模式4: FP/CASH 后面可能有的第二段关键信息
+    fp_tail = re.search(r'FP/CASH,CNY/\*KMG\d{7}.*?/([^/\s]+)$', text)
+    if fp_tail:
+        return fp_tail.group(1)
+
+    return None
+
+
 def process_pnr_response(response_data: Dict) -> Dict:
     """
     处理PNR响应数据，提取关键信息
@@ -165,7 +211,9 @@ def process_pnr_response(response_data: Dict) -> Dict:
         'gp_code': None,
         'vico_a': None,
         'vico_b': None,
+        'vico_d': None,
         'fp_c_value': None,
+        'vico_e': None,
         'order_id': None,
         'status': 'error'
     }
@@ -232,12 +280,16 @@ def process_pnr_response(response_data: Dict) -> Dict:
             fp_c_value = extract_fp_c_value(original_rtc)
             if fp_c_value:
                 result['fp_c_value'] = fp_c_value
+            vico_e = extract_vico_e(original_rtc)
+            if vico_e:
+                result['vico_e'] = vico_e
 
         # 提取VICO值
         ssrs = pnr_data.get('ssrs', [])
         vico_values = extract_vico_values(ssrs)
         result['vico_a'] = vico_values['vico_a']
         result['vico_b'] = vico_values['vico_b']
+        result['vico_d'] = vico_values['vico_d']
 
         result['status'] = 'success'
 
@@ -270,7 +322,7 @@ def query_and_extract(pnr: str, office: str = "KMG319", debug: bool = False) -> 
             print(json.dumps(response, ensure_ascii=False, indent=2))
         result = process_pnr_response(response)
         print(f"查询完成: PNR={result['pnr']}, GP代码={result['gp_code']}, "
-              f"VICO_A={result['vico_a']}, VICO_B={result['vico_b']}, FP_C值={result['fp_c_value']}")
+              f"VICO_A={result['vico_a']}, VICO_B={result['vico_b']}, VICO_D={result['vico_d']}, VICO_E={result['vico_e']}, FP_C值={result['fp_c_value']}")
         return result
     else:
         return {
@@ -278,6 +330,8 @@ def query_and_extract(pnr: str, office: str = "KMG319", debug: bool = False) -> 
             'gp_code': None,
             'vico_a': None,
             'vico_b': None,
+            'vico_d': None,
+            'vico_e': None,
             'fp_c_value': None,
             'order_id': None,
             'status': 'query_failed'
@@ -299,6 +353,8 @@ def format_result(result: Dict) -> str:
             f"GP代码: {result['gp_code'] or '未找到'}\n"
             f"VICO_A值: {result['vico_a'] or '未找到'}\n"
             f"VICO_B值: {result['vico_b'] or '未找到'}\n"
+            f"VICO_D值: {result['vico_d'] or '未找到'}\n"
+            f"VICO_E值: {result['vico_e'] or '未找到'}\n"
             f"FP_C值: {result['fp_c_value'] or '未找到'}\n"
             f"状态: {result['status']}")
 
@@ -321,7 +377,7 @@ def process_excel_file(input_file: str, output_file: str, office: str = "KMG319"
         ws = wb.active
 
         # 添加表头（如果还没有的话）
-        headers = ['PNR', '订单ID', 'GP代码', 'VICO_A值', 'VICO_B值', 'FP_C值', '状态']
+        headers = ['PNR', '订单ID', 'GP代码', 'VICO_A值', 'VICO_B值', 'VICO_D值', 'VICO_E值', 'FP_C值', '状态']
         if ws[1][0].value != 'PNR':
             ws.insert_rows(1)
             for col, header in enumerate(headers, 1):
@@ -362,14 +418,16 @@ def process_excel_file(input_file: str, output_file: str, office: str = "KMG319"
             ws.cell(row=row_idx, column=3, value=result['gp_code'])
             ws.cell(row=row_idx, column=4, value=result['vico_a'])
             ws.cell(row=row_idx, column=5, value=result['vico_b'])
-            ws.cell(row=row_idx, column=6, value=result['fp_c_value'])
-            ws.cell(row=row_idx, column=7, value=result['status'])
+            ws.cell(row=row_idx, column=6, value=result['vico_d'])
+            ws.cell(row=row_idx, column=7, value=result['vico_e'])
+            ws.cell(row=row_idx, column=8, value=result['fp_c_value'])
+            ws.cell(row=row_idx, column=9, value=result['status'])
 
             processed += 1
 
             if result['status'] == 'success':
                 success_count += 1
-                print(f"  [成功] GP代码={result['gp_code']}, VICO_A={result['vico_a']}, VICO_B={result['vico_b']}, FP_C值={result['fp_c_value']}")
+                print(f"  [成功] GP代码={result['gp_code']}, VICO_A={result['vico_a']}, VICO_B={result['vico_b']}, VICO_D={result['vico_d']}, VICO_E={result['vico_e']}, FP_C值={result['fp_c_value']}")
             else:
                 failed_count += 1
                 print(f"  [失败] {result['status']}")
@@ -406,12 +464,12 @@ def create_template_excel(output_file: str = "pnr_template.xlsx"):
         ws.title = "PNR批量导入"
 
         # 设置表头
-        headers = ['PNR', '订单ID', 'GP代码', 'VICO_A值', 'VICO_B值', 'FP_C值', '状态']
+        headers = ['PNR', '订单ID', 'GP代码', 'VICO_A值', 'VICO_B值', 'VICO_D值', 'VICO_E值', 'FP_C值', '状态']
         for col, header in enumerate(headers, 1):
             ws.cell(row=1, column=col, value=header)
 
         # 添加示例数据
-        example_data = ['KF1XHV', '', '', '', '', '', '']
+        example_data = ['KF1XHV', '', '', '', '', '', '', '', '']
         for col, value in enumerate(example_data, 1):
             ws.cell(row=2, column=col, value=value)
 
